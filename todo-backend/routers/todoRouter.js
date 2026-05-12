@@ -11,8 +11,11 @@ router.get("/", async (_req, res) => {
     return res.json(todos);
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error(err);
-    return res.status(500).json({ message: "internal error" });
+    console.error("GET /todos error:", err);
+    return res.status(500).json({
+      message: "internal error",
+      error: err instanceof Error ? err.message : String(err)
+    });
   }
 });
 
@@ -32,8 +35,11 @@ router.delete("/:id", async (req, res) => {
     return res.status(204).end();
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error(err);
-    return res.status(500).json({ message: "internal error" });
+    console.error("DELETE /todos/:id error:", err);
+    return res.status(500).json({
+      message: "internal error",
+      error: err instanceof Error ? err.message : String(err)
+    });
   }
 });
 
