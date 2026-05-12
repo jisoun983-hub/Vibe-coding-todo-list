@@ -4,6 +4,16 @@ const mongoose = require("mongoose");
 
 const router = express.Router();
 
+router.use((_req, res, next) => {
+  if (mongoose.connection.readyState !== 1) {
+    return res.status(503).json({
+      message: "MongoDB not connected",
+      mongoReadyState: mongoose.connection.readyState
+    });
+  }
+  return next();
+});
+
 // GET /todos
 router.get("/", async (_req, res) => {
   try {
@@ -80,8 +90,7 @@ router.patch("/:id", async (req, res) => {
 
     return res.json(todo);
   } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error(err);
+    console.error("PATCH /todos/:id error:", err);
     return res.status(500).json({ message: "internal error" });
   }
 });
@@ -99,8 +108,7 @@ router.post("/", async (req, res) => {
     const todo = await Todo.create({ content: content.trim() });
     return res.status(201).json(todo);
   } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error(err);
+    console.error("POST /todos error:", err);
     return res.status(500).json({ message: "internal error" });
   }
 });
