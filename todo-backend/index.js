@@ -3,6 +3,8 @@ const mongoose = require("mongoose");
 const path = require("path");
 require("dotenv").config({ path: path.join(__dirname, ".env") });
 
+mongoose.set("bufferCommands", false);
+
 const Todo = require("./models/Todo");
 const todoRouter = require("./routers/todoRouter");
 
@@ -34,7 +36,7 @@ app.get("/health", (_req, res) => {
     ok: true,
     service: "todo-backend",
     mongoReadyState: mongoose.connection.readyState,
-    memory: process.memoryUsage()
+    endpoints: ["/health", "/todos"]
   });
 });
 
@@ -45,40 +47,50 @@ app.use(
   "/todos",
   (req, res, next) => {
     if (mongoose.connection.readyState !== 1) {
-      return res.status(503).json({ message: "MongoDB not connected" });
+      return res.status(503).json({
+        message: "MongoDB not connected",
+        mongoReadyState: mongoose.connection.readyState
+      });
     }
     return next();
   },
   todoRouter
 );
 
-const server = app.listen(PORT, "0.0.0.0", () => {
-  // eslint-disable-next-line no-console
-  console.log(`listening on http://0.0.0.0:${PORT}`);
-
-  if (!MONGODB_URI) {
+async function start() {
+  if (MONGODB_URI) {
+    try {
+      await mongoose.connect(MONGODB_URI, {
+        serverSelectionTimeoutMS: 5000
+      });
+      // eslint-disable-next-line no-console
+      console.log("MongoDB connected successfully");
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.log("MongoDB connection failed; HTTP server will still start.");
+      // eslint-disable-next-line no-console
+      console.log(err instanceof Error ? err.message : String(err));
+    }
+  } else {
     // eslint-disable-next-line no-console
-    console.error("MONGODB_URI is not set; MongoDB will not be connected.");
-    return;
+    console.log("MONGODB_URI is not set; skipping MongoDB connect.");
   }
 
-  mongoose
-    .connect(MONGODB_URI, {
-      serverSelectionTimeoutMS: 5000
-    })
-    .then(() => {
-      // eslint-disable-next-line no-console
-      console.log("MongoDB connected");
-    })
-    .catch((err) => {
-      // eslint-disable-next-line no-console
-      console.error("MongoDB connection failed:", err);
-    });
-});
+  const server = app.listen(PORT, "0.0.0.0", () => {
+    // eslint-disable-next-line no-console
+    console.log(`HTTP server listening on http://0.0.0.0:${PORT}`);
+  });
 
-const shutdown = async () => {
-  await mongoose.disconnect().catch(() => {});
-  server.close(() => process.exit(0));
-};
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
+  const shutdown = async () => {
+    await mongoose.disconnect().catch(() => {});
+    server.close(() => process.exit(0));
+  };
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
+}
+
+start().catch((err) => {
+  // eslint-disable-next-line no-console
+  console.log("Fatal error during startup:", err instanceof Error ? err.message : String(err));
+  process.exit(1);
+});
