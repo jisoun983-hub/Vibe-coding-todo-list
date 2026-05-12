@@ -10,11 +10,11 @@ router.get("/", async (_req, res) => {
     const todos = await Todo.find().sort({ createdAt: -1 });
     return res.json(todos);
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error("GET /todos error:", err);
     return res.status(500).json({
       message: "internal error",
-      error: err instanceof Error ? err.message : String(err)
+      error: err.message,
+      detail: String(err),
     });
   }
 });
@@ -34,11 +34,11 @@ router.delete("/:id", async (req, res) => {
 
     return res.status(204).end();
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error("DELETE /todos/:id error:", err);
     return res.status(500).json({
       message: "internal error",
-      error: err instanceof Error ? err.message : String(err)
+      error: err.message,
+      detail: String(err),
     });
   }
 });
