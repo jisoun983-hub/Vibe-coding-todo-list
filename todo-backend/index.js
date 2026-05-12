@@ -32,7 +32,9 @@ app.get("/", (_req, res) => {
 app.get("/health", (_req, res) => {
   res.status(200).json({
     ok: true,
-    dbState: mongoose.connection.readyState
+    service: "todo-backend",
+    mongoReadyState: mongoose.connection.readyState,
+    memory: process.memoryUsage()
   });
 });
 
@@ -43,48 +45,40 @@ app.use(
   "/todos",
   (req, res, next) => {
     if (mongoose.connection.readyState !== 1) {
-      return res.status(503).json({
-        ok: false,
-        message: "database not connected",
-        dbState: mongoose.connection.readyState
-      });
+      return res.status(503).json({ message: "MongoDB not connected" });
     }
     return next();
   },
   todoRouter
 );
 
-async function start() {
+const server = app.listen(PORT, "0.0.0.0", () => {
+  // eslint-disable-next-line no-console
+  console.log(`listening on http://0.0.0.0:${PORT}`);
+
   if (!MONGODB_URI) {
     // eslint-disable-next-line no-console
-    console.error("MONGODB_URI is required");
-    process.exit(1);
+    console.error("MONGODB_URI is not set; MongoDB will not be connected.");
+    return;
   }
 
-  try {
-    await mongoose.connect(MONGODB_URI, {
-      serverSelectionTimeoutMS: 10000
-    });
-
-    // eslint-disable-next-line no-console
-    console.log("MongoDB connected");
-
-    const server = app.listen(PORT, () => {
+  mongoose
+    .connect(MONGODB_URI, {
+      serverSelectionTimeoutMS: 5000
+    })
+    .then(() => {
       // eslint-disable-next-line no-console
-      console.log(`listening on http://localhost:${PORT}`);
+      console.log("MongoDB connected");
+    })
+    .catch((err) => {
+      // eslint-disable-next-line no-console
+      console.error("MongoDB connection failed:", err);
     });
+});
 
-    const shutdown = async () => {
-      await mongoose.disconnect().catch(() => {});
-      server.close(() => process.exit(0));
-    };
-    process.on("SIGINT", shutdown);
-    process.on("SIGTERM", shutdown);
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error("MongoDB connection failed:", err);
-    process.exit(1);
-  }
-}
-
-start();
+const shutdown = async () => {
+  await mongoose.disconnect().catch(() => {});
+  server.close(() => process.exit(0));
+};
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
