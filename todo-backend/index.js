@@ -20,6 +20,15 @@ app.use((req, res, next) => {
 });
 app.use(express.json());
 
+app.get("/", (_req, res) =>
+  res.status(200).json({
+    ok: true,
+    service: "todo-backend",
+    message: "Todo backend is running",
+    endpoints: ["/health", "/todos"]
+  })
+);
+
 app.get("/health", (_req, res) => res.status(200).json({ ok: true }));
 
 // Ensure model is registered before routes.
