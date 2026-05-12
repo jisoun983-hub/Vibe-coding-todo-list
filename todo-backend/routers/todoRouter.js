@@ -7,7 +7,7 @@ const router = express.Router();
 // GET /todos
 router.get("/", async (_req, res) => {
   try {
-    const todos = await Todo.find().sort({ createdAt: -1 });
+    const todos = await Todo.find().sort({ createdAt: -1 }).lean();
     return res.json(todos);
   } catch (err) {
     console.error("GET /todos error:", err);
