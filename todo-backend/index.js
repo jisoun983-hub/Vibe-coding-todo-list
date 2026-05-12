@@ -7,7 +7,7 @@ const todoRouter = require("./routers/todoRouter");
 
 dotenv.config({ path: path.join(__dirname, ".env") });
 
-const PORT = Number(process.env.PORT ?? 5001);
+const PORT = process.env.PORT || 5001;
 const MONGODB_URI = process.env.MONGODB_URI;
 
 async function main() {
