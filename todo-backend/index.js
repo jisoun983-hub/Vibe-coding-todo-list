@@ -10,47 +10,49 @@ dotenv.config({ path: path.join(__dirname, ".env") });
 const PORT = process.env.PORT || 5001;
 const MONGODB_URI = process.env.MONGODB_URI;
 
-async function main() {
+const app = express();
+app.use((req, res, next) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
+  if (req.method === "OPTIONS") return res.status(204).end();
+  return next();
+});
+app.use(express.json());
+
+app.get("/health", (_req, res) => res.status(200).json({ ok: true }));
+
+// Ensure model is registered before routes.
+void Todo;
+app.use("/todos", todoRouter);
+
+const server = app.listen(PORT, () => {
+  // eslint-disable-next-line no-console
+  console.log(`listening on http://localhost:${PORT}`);
+
   if (!MONGODB_URI) {
-    throw new Error("MONGODB_URI is required. Put it in .env");
+    // eslint-disable-next-line no-console
+    console.error(
+      "MONGODB_URI is not set. Set it in environment or .env for database features."
+    );
+    return;
   }
 
-  await mongoose.connect(MONGODB_URI);
-  // eslint-disable-next-line no-console
-  console.log("연결 성공");
-
-  const app = express();
-  app.use((req, res, next) => {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-    res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
-    if (req.method === "OPTIONS") return res.status(204).end();
-    return next();
-  });
-  app.use(express.json());
-
-  app.get("/health", (_req, res) => res.json({ ok: true }));
-
-  // Ensure model is registered before routes.
-  void Todo;
-  app.use("/todos", todoRouter);
-
-  const server = app.listen(PORT, () => {
-    // eslint-disable-next-line no-console
-    console.log(`listening on http://localhost:${PORT}`);
-  });
-
-  const shutdown = async () => {
-    await mongoose.disconnect().catch(() => {});
-    server.close(() => process.exit(0));
-  };
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
-}
-
-main().catch((err) => {
-  // eslint-disable-next-line no-console
-  console.error(err);
-  process.exit(1);
+  mongoose
+    .connect(MONGODB_URI)
+    .then(() => {
+      // eslint-disable-next-line no-console
+      console.log("연결 성공");
+    })
+    .catch((err) => {
+      // eslint-disable-next-line no-console
+      console.error(err);
+    });
 });
 
+const shutdown = async () => {
+  await mongoose.disconnect().catch(() => {});
+  server.close(() => process.exit(0));
+};
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
