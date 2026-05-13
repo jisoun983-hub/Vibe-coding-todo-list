@@ -5,6 +5,20 @@ require("dotenv").config({ path: path.join(__dirname, ".env") });
 
 mongoose.set("bufferCommands", false);
 
+let lastMongoError = null;
+
+function summarizeMongoError(err) {
+  if (!err || typeof err !== "object") {
+    return { message: String(err) };
+  }
+  const anyErr = /** @type {any} */ (err);
+  return {
+    name: typeof anyErr.name === "string" ? anyErr.name : undefined,
+    message: typeof anyErr.message === "string" ? anyErr.message : String(err),
+    code: anyErr.code
+  };
+}
+
 const Todo = require("./models/Todo");
 const todoRouter = require("./routers/todoRouter");
 
@@ -36,7 +50,8 @@ app.get("/health", (_req, res) => {
     ok: true,
     service: "todo-backend",
     mongoReadyState: mongoose.connection.readyState,
-    endpoints: ["/health", "/todos"]
+    endpoints: ["/health", "/todos"],
+    lastMongoError
   });
 });
 
@@ -65,15 +80,18 @@ async function start() {
       });
       // eslint-disable-next-line no-console
       console.log("MongoDB connected successfully");
+      lastMongoError = null;
     } catch (err) {
       // eslint-disable-next-line no-console
       console.log("MongoDB connection failed; HTTP server will still start.");
       // eslint-disable-next-line no-console
-      console.log(err instanceof Error ? err.message : String(err));
+      console.error(err);
+      lastMongoError = summarizeMongoError(err);
     }
   } else {
     // eslint-disable-next-line no-console
     console.log("MONGODB_URI is not set; skipping MongoDB connect.");
+    lastMongoError = { message: "MONGODB_URI is not set" };
   }
 
   const server = app.listen(PORT, "0.0.0.0", () => {
