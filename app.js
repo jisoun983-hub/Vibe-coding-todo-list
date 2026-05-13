@@ -1,39 +1,21 @@
-// Firebase (ES Module)
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-app.js";
-import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-analytics.js";
-import {
-  getDatabase,
-  onValue,
-  push,
-  ref,
-  remove,
-  serverTimestamp,
-  set,
-  update,
-} from "https://www.gstatic.com/firebasejs/12.12.1/firebase-database.js";
+const API_BASE = "https://port-0-vibe-coding-todo-list-mp1zx8b5ed30517c.sel3.cloudtype.app";
 
-const firebaseConfig = {
-  apiKey: "AIzaSyAH5N51-tuPvpYHAF_heW12Mu-IWvceaCU",
-  authDomain: "so-un-todo-backend.firebaseapp.com",
-  projectId: "so-un-todo-backend",
-  databaseURL: "https://so-un-todo-backend-default-rtdb.asia-southeast1.firebasedatabase.app",
-  storageBucket: "so-un-todo-backend.firebasestorage.app",
-  messagingSenderId: "447530484307",
-  appId: "1:447530484307:web:8fb0244ec871dbfe697ca6",
-  measurementId: "G-8SPK5GR0FV",
-};
+async function api(path, options = {}) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: { "content-type": "application/json", ...(options.headers ?? {}) },
+    ...options,
+  });
 
-const firebaseApp = initializeApp(firebaseConfig);
-const rtdb = getDatabase(firebaseApp);
-const todosRef = ref(rtdb, "todos");
-let analytics = null;
-try {
-  analytics = getAnalytics(firebaseApp);
-} catch {
-  // Analytics may fail in some environments (e.g., blocked/unsupported); app can still work.
+  if (res.status === 204) return null;
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : null;
+
+  if (!res.ok) {
+    const message = data?.message || `request failed (${res.status})`;
+    throw new Error(message);
+  }
+  return data;
 }
-
-const STORAGE_KEY = "todo_app_v1";
 
 function uuid() {
   if (globalThis.crypto && typeof globalThis.crypto.randomUUID === "function") {
@@ -84,40 +66,19 @@ function formatKoreanDate(value) {
   }).format(d);
 }
 
-function loadTodos() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter((t) => t && typeof t === "object")
-      .map((t) => ({
-        id: String(t.id ?? uuid()),
-        text: String(t.text ?? "").trim(),
-        done: Boolean(t.done),
-        createdAt: typeof t.createdAt === "string" ? t.createdAt : nowIso(),
-        updatedAt: typeof t.updatedAt === "string" ? t.updatedAt : nowIso(),
-      }))
-      .filter((t) => t.text.length > 0);
-  } catch {
-    return [];
-  }
-}
-
-function saveTodos(todos) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(todos));
-}
-
-function createTodo(text) {
-  const trimmed = text.trim();
+function fromApiTodo(todo) {
   return {
-    id: uuid(),
-    text: trimmed,
-    done: false,
-    createdAt: nowIso(), // local fallback
-    updatedAt: nowIso(), // local fallback
+    id: String(todo?._id ?? uuid()),
+    text: String(todo?.content ?? "").trim(),
+    done: Boolean(todo?.completed),
+    createdAt: todo?.createdAt ?? nowIso(),
+    updatedAt: todo?.updatedAt ?? todo?.createdAt ?? nowIso(),
   };
+}
+
+async function fetchTodos() {
+  const todos = await api("/todos");
+  return (Array.isArray(todos) ? todos : []).map(fromApiTodo);
 }
 
 const state = {
@@ -287,21 +248,16 @@ function addTodoFromInput() {
   els.newTodo.value = "";
   els.newTodo.focus();
 
-  const createdAt = Date.now();
-  const dueAt = createdAt + WEEK_MS;
-  const newTodoRef = push(todosRef);
-  set(newTodoRef, {
-    text,
-    done: false,
-    createdAt,
-    dueAt,
-    updatedAt: serverTimestamp(),
-  }).catch((err) => {
-    console.error(err);
-    alert("Firebase Realtime Database 저장 실패. DB 규칙/네트워크를 확인해 주세요.");
-  });
-
-  console.log("[RTDB] saved todo key:", newTodoRef.key);
+  api("/todos", { method: "POST", body: JSON.stringify({ content: text }) })
+    .then((created) => {
+      const mapped = fromApiTodo(created);
+      state.todos = [mapped, ...state.todos];
+      render();
+    })
+    .catch((err) => {
+      console.error(err);
+      alert("할 일 저장에 실패했어요. 백엔드 서버를 확인해 주세요.");
+    });
 }
 
 function toggleDone(id) {
@@ -315,9 +271,12 @@ function toggleDone(id) {
   // If completed, remove countdown pause state
   if (nextDone) pausedCountdown.delete(id);
 
-  update(ref(rtdb, `todos/${id}`), { done: nextDone, updatedAt: serverTimestamp() }).catch((err) => {
+  api(`/todos/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ completed: nextDone }),
+  }).catch((err) => {
     console.error(err);
-    alert("Firebase 업데이트 실패. Realtime Database 규칙을 확인해 주세요.");
+    alert("완료 상태 업데이트에 실패했어요.");
   });
 }
 
@@ -329,9 +288,9 @@ function removeTodo(id) {
   state.todos = state.todos.filter((x) => x.id !== id);
   render();
 
-  remove(ref(rtdb, `todos/${id}`)).catch((err) => {
+  api(`/todos/${encodeURIComponent(id)}`, { method: "DELETE" }).catch((err) => {
     console.error(err);
-    alert("Firebase 삭제 실패. Realtime Database 규칙을 확인해 주세요.");
+    alert("삭제에 실패했어요.");
   });
 }
 
@@ -344,9 +303,9 @@ function clearDone() {
   state.todos = state.todos.filter((t) => !t.done);
   render();
 
-  for (const id of doneIds) {
-    remove(ref(rtdb, `todos/${id}`)).catch((err) => console.error(err));
-  }
+  Promise.allSettled(doneIds.map((id) => api(`/todos/${encodeURIComponent(id)}`, { method: "DELETE" }))).catch(
+    () => {}
+  );
 }
 
 function clearAll() {
@@ -357,9 +316,7 @@ function clearAll() {
   state.todos = [];
   render();
 
-  for (const id of ids) {
-    remove(ref(rtdb, `todos/${id}`)).catch((err) => console.error(err));
-  }
+  Promise.allSettled(ids.map((id) => api(`/todos/${encodeURIComponent(id)}`, { method: "DELETE" }))).catch(() => {});
 }
 
 function openEdit(id) {
@@ -400,9 +357,12 @@ function saveEdit(text) {
   closeEditDialog();
   render();
 
-  update(ref(rtdb, `todos/${old.id}`), { text: trimmed, updatedAt: serverTimestamp() }).catch((err) => {
+  api(`/todos/${encodeURIComponent(old.id)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ content: trimmed }),
+  }).catch((err) => {
     console.error(err);
-    alert("Firebase 수정 실패. Realtime Database 규칙을 확인해 주세요.");
+    alert("수정 저장에 실패했어요.");
   });
 }
 
@@ -412,31 +372,16 @@ els.addForm.addEventListener("submit", (e) => {
   addTodoFromInput();
 });
 
-// Firebase realtime sync (Realtime Database: /todos)
-onValue(
-  todosRef,
-  (snap) => {
-    const raw = snap.val() ?? {};
-    const todos = Object.entries(raw).map(([id, data]) => ({
-      id,
-      text: String(data?.text ?? "").trim(),
-      done: Boolean(data?.done),
-      createdAt: data?.createdAt ?? nowIso(),
-      dueAt: data?.dueAt ?? null,
-      updatedAt: data?.updatedAt ?? data?.createdAt ?? nowIso(),
-    }));
-
-    // Keep newest-first at the source; UI still supports other sorts.
-    todos.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+// Initial load (Express + MongoDB)
+fetchTodos()
+  .then((todos) => {
     state.todos = todos.filter((t) => t.text.length > 0);
-    console.log("[RTDB] loaded todos:", state.todos.length);
     render();
-  },
-  (err) => {
+  })
+  .catch((err) => {
     console.error(err);
-    alert("Firebase에서 할 일을 가져오지 못했어요. Realtime Database Rules(읽기 권한)을 확인해 주세요.");
-  },
-);
+    alert("할 일 목록을 가져오지 못했어요. 백엔드 서버를 확인해 주세요.");
+  });
 
 function updateCountdownButtons() {
   const buttons = document.querySelectorAll(".deadlineBtn[data-due-at]");
