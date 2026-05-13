@@ -1,13 +1,22 @@
+# GitHub Pages 정적 배포 (브랜치 gh-pages)
+# GitHub Actions 소스의 configure-pages 실패(저장소에서 Pages 미연동)를 피하기 위해
+# gh-pages 브랜치로 퍼블리시합니다.
+#
+# 최초 1회: Repo → Settings → Pages → Build and deployment
+#   Source: "Deploy from a branch"
+#   Branch: gh-pages  /  Folder: / (root)
+# 이후 main에 push 될 때마다 자동 배포됩니다.
+#
+# 배포 루트: 저장소 루트의 index.html, app.js, style.css (todo-firebase 하위가 아님)
 name: Deploy GitHub Pages
 
 on:
   push:
     branches: ["main"]
+  workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
   group: "pages"
@@ -15,22 +24,21 @@ concurrency:
 
 jobs:
   deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Configure Pages
-        uses: actions/configure-pages@v4
+      - name: Prepare site
+        run: |
+          mkdir -p site
+          cp index.html app.js style.css site/
+          touch site/.nojekyll
 
-      - name: Upload static site
-        uses: actions/upload-pages-artifact@v3
+      - name: Publish to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          path: "."
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: site
+          force_orphan: true
